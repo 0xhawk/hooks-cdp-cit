@@ -1,0 +1,3 @@
+[submodule "hook-cdp-cit/lib/forge-std"]
+	path = hook-cdp-cit/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
