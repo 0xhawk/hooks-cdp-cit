@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "solmate/src/utils/SafeTransferLib.sol";
-import "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 import "./CryptoIndexToken.sol";
 
@@ -12,6 +12,7 @@ contract CDPManager {
     ERC20 public immutable usdc;
     CryptoIndexToken public immutable cit;
     AggregatorV3Interface public immutable oracle;
+    address public hookContract;
 
     uint256 public constant COLLATERALIZATION_RATIO = 150; // 150%
     uint256 public constant LIQUIDATION_THRESHOLD = 130; // 130%
@@ -102,5 +103,32 @@ contract CDPManager {
 
         // Reward liquidator with collateral
         usdc.safeTransfer(msg.sender, seizedCollateral);
+    }
+
+    function depositAndMintFromHook(address user, uint256 usdcAmount) external {
+        // require(msg.sender == address(hookContract), "Unauthorized"); // Replace hookContract with the actual hook contract address set during deployment.
+
+        require(usdcAmount > 0, "Invalid amount");
+
+        // USDC is already transferred to CDPManager via the pool
+
+        // Fetch the current CIT price
+        uint256 citPrice = getLatestPrice();
+
+        // Calculate max CIT mintable based on collateralization ratio
+        uint256 citAmount = (usdcAmount * PERCENT_BASE * 1e18) /
+            (citPrice * COLLATERALIZATION_RATIO);
+
+        // Update user's position
+        positions[user].collateral += usdcAmount;
+        positions[user].debt += citAmount;
+
+        // Mint CIT to user
+        cit.mint(user, citAmount);
+    }
+
+    function setHookContract(address _hookContract) external {
+        require(hookContract == address(0), "Hook contract already set");
+        hookContract = _hookContract;
     }
 }
