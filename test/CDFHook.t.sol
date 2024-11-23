@@ -37,7 +37,7 @@ contract CDPSystemTest is Test, Deployers {
 
         // Deploy USDC Mock Token
         usdc = new MockERC20("Mock USDC", "USDC", 6);
-        usdc.mint(address(this), 10_000e6);
+        usdc.mint(address(this), 10000e6);
 
         // Approve USDC Mock
         usdc.approve(address(swapRouter), type(uint256).max);
@@ -50,7 +50,7 @@ contract CDPSystemTest is Test, Deployers {
         // Deploy Hook
         uint160 flags = uint160(
             Hooks.AFTER_INITIALIZE_FLAG |
-                Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+                Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
                 Hooks.AFTER_SWAP_FLAG
         );
         deployCodeTo("CDPHook.sol", abi.encode(manager), address(flags));
@@ -71,7 +71,10 @@ contract CDPSystemTest is Test, Deployers {
         bytes32 salt = keccak256(abi.encodePacked("unique_identifier"));
         bytes memory bytecode = type(CryptoIndexToken).creationCode;
         bytes32 bytecodeHash = cdpManager.getBytecodeHash(bytecode);
-        address predictedCitAddress = cdpManager.computeAddress(salt, bytecodeHash);
+        address predictedCitAddress = cdpManager.computeAddress(
+            salt,
+            bytecodeHash
+        );
         cit = CryptoIndexToken(predictedCitAddress);
 
         // Wrap currency for the pool
@@ -86,23 +89,22 @@ contract CDPSystemTest is Test, Deployers {
             3000, // Swap Fees
             SQRT_PRICE_1_1 // Initial Sqrt(P) value = 1
         );
-
         cit.approve(address(swapRouter), type(uint256).max);
         cit.approve(address(modifyLiquidityRouter), type(uint256).max);
         cit.approve(address(hook), type(uint256).max);
 
-        hook.addLiquidity(key, 1000e6);
+        // Execute
+        hook.addLiquidity(key, 200e6);
 
-        // modifyLiquidityRouter.modifyLiquidity(
-        //     key,
-        //     IPoolManager.ModifyLiquidityParams({
-        //         tickLower: -60,
-        //         tickUpper: 60,
-        //         liquidityDelta: 100 ether,
-        //         salt: bytes32(0)
-        //     }),
-        //     ZERO_BYTES
-        // );
+        uint256 balanceCitInPM = cit.balanceOf(address(manager));
+        uint256 balanceUsdcInPM = usdc.balanceOf(address(manager));
+        (uint256 collateral, uint256 debt) = cdpManager.positions(
+            address(this)
+        );
+
+        // Verify user's position in CDP Manager
+        assertEq(collateral, balanceUsdcInPM, "Incorrect collateral");
+        assertEq(debt, balanceCitInPM, "Incorrect debt");
     }
 
     function testAddLiquidityAndMintCIT() public {

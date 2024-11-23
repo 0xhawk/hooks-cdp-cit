@@ -10,9 +10,13 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import "./CDPManager.sol";
 import "forge-std/console.sol";
+import "forge-std/interfaces/IERC20.sol";
 
 contract CDPHook is BaseHook {
     using CurrencySettler for Currency;
+
+    error AddLiquidityThroughHook(); // error to throw when someone tries adding liquidity directly to the PoolManager
+
     CDPManager public cdpManager;
 
     constructor(IPoolManager _manager) BaseHook(_manager) {}
@@ -33,8 +37,8 @@ contract CDPHook is BaseHook {
             Hooks.Permissions({
                 beforeInitialize: false,
                 afterInitialize: true,
-                beforeAddLiquidity: false,
-                afterAddLiquidity: true,
+                beforeAddLiquidity: true,
+                afterAddLiquidity: false,
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
                 beforeSwap: false,
@@ -79,55 +83,19 @@ contract CDPHook is BaseHook {
     function _unlockCallback(
         bytes calldata data
     ) internal override returns (bytes memory) {
-        console.log("CALL BACK");
         CallbackData memory callbackData = abi.decode(data, (CallbackData));
-        uint256 collateralAmount = callbackData.amount0 / 2; // 50% to be collateral
-        uint256 debtAmount = cdpManager.depositAndMint(callbackData.sender, collateralAmount);
-        console.log(debtAmount);
-
-        // TODO: add liquidity
-        
-
+        cdpManager.mintAndDeposit(callbackData.sender, address(poolManager), callbackData.amount0);
         return "";
     }
 
-    function afterAddLiquidity(
-        address sender,
-        PoolKey calldata key,
+    // Disable adding liquidity through the PM
+    function beforeAddLiquidity(
+        address,
+        PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
-        BalanceDelta delta,
-        BalanceDelta,
         bytes calldata
-    ) external override onlyPoolManager returns (bytes4, BalanceDelta) {
-        console.log("AFTER ADD LIQUIDITY");
-        console.log(delta.amount0());
-        console.log(delta.amount1());
-        // Assume USDC is token0 and CIT is token1
-        // Check if the pool is the USDC/CIT pool
-        // if (
-        //     Currency.unwrap(key.currency0) != address(cdpManager.usdc()) ||
-        //     Currency.unwrap(key.currency1) != address(cit)
-        // ) {
-        //     return (this.afterAddLiquidity.selector, delta);
-        // }
-
-        // // Determine the amount of USDC added
-        // uint256 usdcAmount;
-        // if (delta.amount0() < 0) {
-        //     // User added USDC to the pool
-        //     usdcAmount = uint256(int256(-delta.amount0()));
-        // } else {
-        //     // No USDC added; possibly a removal of liquidity
-        //     usdcAmount = 0;
-        // }
-
-        // // Proceed only if usdcAmount is greater than zero
-        // if (usdcAmount > 0) {
-        //     // Call depositAndMintFromHook on the CDP Manager
-        //     cdpManager.depositAndMintFromHook(sender, usdcAmount);
-        // }
-
-        return (this.afterAddLiquidity.selector, delta);
+    ) external pure override returns (bytes4) {
+        revert AddLiquidityThroughHook();
     }
 
     function afterSwap(

@@ -75,26 +75,33 @@ contract CDPManager {
     }
 
     // Function to deposit USDC and mint CIT
-    function depositAndMint(address sender, uint256 usdcAmount) external returns (uint256) {
+    function mintAndDeposit(
+        address user,
+        address poolManager,
+        uint256 usdcAmount
+    ) external returns (uint256) {
+        require(msg.sender == hookContract, "Only hook can call");
         require(usdcAmount > 0, "Invalid amount");
 
-        // Transfer USDC from user to contract
-        usdc.safeTransferFrom(sender, address(this), usdcAmount);
-
-        // Fetch the current CIT price
+        // Get CIT price from oracle
         uint256 citPrice = getLatestPrice();
 
-        // Calculate max CIT mintable based on collateralization ratio
-        uint256 citAmount = (usdcAmount * PERCENT_BASE * 1e18) /
+        uint256 collateralAmount = usdcAmount / 2; // 50% to be collateral
+
+
+        // Calculate CIT amount to mint based on collateral ratio
+        uint256 citAmount = (collateralAmount * PERCENT_BASE * 1e18) /
             (citPrice * COLLATERALIZATION_RATIO);
 
         // Update user's position
-        positions[sender].collateral += usdcAmount;
-        positions[sender].debt += citAmount;
+        positions[user].debt += citAmount;
+        positions[user].collateral += usdcAmount;
 
-        // Mint CIT to user
-        // cit.mint(msg.sender, citAmount);
-        cit.mint(sender, citAmount);
+        // Mint CIT
+        cit.mint(poolManager, citAmount);
+
+        // Transfer
+        usdc.transferFrom(user, poolManager, usdcAmount);
         return citAmount;
     }
 
