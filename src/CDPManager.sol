@@ -9,8 +9,10 @@ import "./CryptoIndexToken.sol";
 contract CDPManager {
     using SafeTransferLib for ERC20;
 
+    bool public initialized;
+
     ERC20 public immutable usdc;
-    CryptoIndexToken public immutable cit;
+    CryptoIndexToken public cit;
     AggregatorV3Interface public immutable oracle;
     address public hookContract;
 
@@ -25,18 +27,59 @@ contract CDPManager {
 
     mapping(address => Position) public positions;
 
-    constructor(address _usdc, address _cit, address _oracle) {
+    constructor(address _usdc, address _oracle, address _hookContract) {
         usdc = ERC20(_usdc);
-        cit = CryptoIndexToken(_cit);
         oracle = AggregatorV3Interface(_oracle);
+        hookContract = _hookContract;
+    }
+
+    function initialize(bytes32 salt) external {
+        require(!initialized, "Already initialized");
+        bytes memory bytecode = type(CryptoIndexToken).creationCode;
+
+        address addr;
+        assembly {
+            addr := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+        }
+        require(addr != address(0), "Deploy failed");
+
+        cit = CryptoIndexToken(addr);
+        initialized = true;
+    }
+
+    function getBytecodeHash(
+        bytes memory bytecode
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(bytecode));
+    }
+
+    function computeAddress(
+        bytes32 salt,
+        bytes32 bytecodeHash
+    ) public view returns (address) {
+        return
+            address(
+                uint160(
+                    uint256(
+                        keccak256(
+                            abi.encodePacked(
+                                bytes1(0xff),
+                                address(this),
+                                salt,
+                                bytecodeHash
+                            )
+                        )
+                    )
+                )
+            );
     }
 
     // Function to deposit USDC and mint CIT
-    function depositAndMint(uint256 usdcAmount) external {
+    function depositAndMint(address sender, uint256 usdcAmount) external returns (uint256) {
         require(usdcAmount > 0, "Invalid amount");
 
         // Transfer USDC from user to contract
-        usdc.safeTransferFrom(msg.sender, address(this), usdcAmount);
+        usdc.safeTransferFrom(sender, address(this), usdcAmount);
 
         // Fetch the current CIT price
         uint256 citPrice = getLatestPrice();
@@ -46,11 +89,13 @@ contract CDPManager {
             (citPrice * COLLATERALIZATION_RATIO);
 
         // Update user's position
-        positions[msg.sender].collateral += usdcAmount;
-        positions[msg.sender].debt += citAmount;
+        positions[sender].collateral += usdcAmount;
+        positions[sender].debt += citAmount;
 
         // Mint CIT to user
-        cit.mint(msg.sender, citAmount);
+        // cit.mint(msg.sender, citAmount);
+        cit.mint(sender, citAmount);
+        return citAmount;
     }
 
     // Function to redeem CIT for USDC
