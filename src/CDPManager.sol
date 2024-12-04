@@ -76,8 +76,8 @@ contract CDPManager {
 
     // Function to deposit USDC and mint syntheticToken
     function mintAndDeposit(
+        address recipient,
         address user,
-        address poolManager,
         uint256 _collateralAmount
     ) external returns (uint256) {
         require(msg.sender == hookContract, "Only hook can call");
@@ -98,10 +98,8 @@ contract CDPManager {
         positions[user].collateral += collateralAmount;
 
         // Mint syntheticToken
-        syntheticToken.mint(poolManager, syntheticTokenAmount);
+        syntheticToken.mint(recipient, syntheticTokenAmount);
 
-        // Transfer
-        collateralToken.transferFrom(user, poolManager, collateralAmount);
         return syntheticTokenAmount;
     }
 

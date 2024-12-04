@@ -20,6 +20,7 @@ contract CDPHook is BaseHook {
     error AddLiquidityThroughHook(); // error to throw when someone tries adding liquidity directly to the PoolManager
 
     CDPManager public cdpManager;
+    PoolKey public poolKey;
 
     constructor(IPoolManager _manager) BaseHook(_manager) {}
 
@@ -61,6 +62,7 @@ contract CDPHook is BaseHook {
         int24 tick
     ) external override onlyPoolManager returns (bytes4) {
         console.log("AFTER INITIALIZE");
+        poolKey = key; // Store the poolKey for later use
         // TODO: salt from args
         bytes32 salt = keccak256(abi.encodePacked("unique_identifier"));
         cdpManager.initialize(salt);
@@ -75,6 +77,12 @@ contract CDPHook is BaseHook {
     }
 
     function addLiquidity(PoolKey calldata key, uint256 amount0) external {
+        // Transfer USDC from user to Hook
+        IERC20(address(cdpManager.collateralToken())).transferFrom(
+            msg.sender,
+            address(this),
+            amount0
+        );
         poolManager.unlock(
             abi.encode(
                 CallbackData(amount0, key.currency0, key.currency1, msg.sender)
@@ -86,20 +94,79 @@ contract CDPHook is BaseHook {
         bytes calldata data
     ) internal override returns (bytes memory) {
         CallbackData memory callbackData = abi.decode(data, (CallbackData));
-        cdpManager.mintAndDeposit(
+
+        // Mint synthetic tokens to the Hook contract and update user's position
+        uint256 syntheticTokenAmount = cdpManager.mintAndDeposit(
+            address(this),
             callbackData.sender,
-            address(poolManager),
             callbackData.amount0
         );
-        // Approve synthetic token for the PoolManager
-        IERC20(address(cdpManager.syntheticToken())).approve(
-            address(poolManager),
-            type(uint256).max
+
+        // Now the Hook has both USDC and synthetic tokens
+
+        // Settle USDC from Hook to PoolManager
+        callbackData.currency0.settle(
+            poolManager,
+            address(this),
+            callbackData.amount0,
+            false // false because we are transferring tokens, not burning claim tokens
         );
-        IERC20(address(cdpManager.collateralToken())).approve(
-            address(poolManager),
-            type(uint256).max
+
+        // Settle CIT from Hook to PoolManager
+        callbackData.currency1.settle(
+            poolManager,
+            address(this),
+            syntheticTokenAmount,
+            false
         );
+
+        callbackData.currency0.take(
+            poolManager,
+            address(this),
+            callbackData.amount0,
+            true // true = mint claim tokens for the hook, equivalent to money we just deposited to the PM
+        );
+        callbackData.currency1.take(
+            poolManager,
+            address(this),
+            syntheticTokenAmount,
+            true
+        );
+
+        // // Calculate liquidityDelta
+        // int24 tickLower = -887220;
+        // int24 tickUpper = 887220;
+
+        // uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(0);
+        // uint160 sqrtPriceLower = TickMath.getSqrtPriceAtTick(tickLower);
+        // uint160 sqrtPriceUpper = TickMath.getSqrtPriceAtTick(tickUpper);
+
+        // // Since we are adding full range liquidity, amounts can be used directly
+        // uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
+        //     sqrtPriceX96,
+        //     sqrtPriceLower,
+        //     sqrtPriceUpper,
+        //     callbackData.amount0,
+        //     syntheticTokenAmount
+        // );
+
+        // // Prepare ModifyLiquidityParams
+        // IPoolManager.ModifyLiquidityParams memory params = IPoolManager
+        //     .ModifyLiquidityParams({
+        //         tickLower: tickLower,
+        //         tickUpper: tickUpper,
+        //         liquidityDelta: int256(int128(liquidityDelta)),
+        //         salt: bytes32(0)
+        //     });
+
+        // // Call modifyLiquidity on PoolManager
+        // poolManager.modifyLiquidity(
+        //     poolKey,
+        //     params,
+        //     "" // No extra data
+        // );
+
+        // TODO: modifyLiquidity
         return "";
     }
 

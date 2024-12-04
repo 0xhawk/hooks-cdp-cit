@@ -97,25 +97,81 @@ contract CDPSystemTest is Test, Deployers {
     }
 
     function testAddLiquidity() public {
+        // Approve
+        usdc.approve(address(hook), type(uint256).max);
+        cit.approve(address(hook), type(uint256).max);
+
         // Execute
         hook.addLiquidity(key, 200e6);
-        // TODO
+
+    
+        // Get the user's position
+        (uint256 collateral, uint256 debt) = cdpManager.positions(
+            address(this)
+        );
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+
+        // Check that collateral and debt are updated
+        assertTrue(collateral > 0, "Collateral not updated");
+        assertTrue(debt > 0, "Debt not updated");
+
+        // Check balances in the pool
+        uint256 poolUsdcBalance = usdc.balanceOf(address(manager));
+        uint256 poolCitBalance = cit.balanceOf(address(manager));
+
+        console.log("Pool USDC Balance:", poolUsdcBalance);
+        console.log("Pool CIT Balance:", poolCitBalance);
+
+        assertTrue(poolUsdcBalance > 0, "USDC not added to pool");
+        assertTrue(poolCitBalance > 0, "CIT not added to pool");
+
+        // TODO: using the price oracle to assert the number exactly
     }
 
-        function testAddLiquidityMultipleTimes() public {
-            hook.addLiquidity(key, 200e6); // 200 USDC
-            hook.addLiquidity(key, 300e6); // 300 USDC
-            hook.addLiquidity(key, 500e6); // 500 USDC
-            
-            // TODO
-        }
+    // function testAddLiquidityMultipleTimes() public {
+    //     // Approve
+    //     usdc.approve(address(hook), type(uint256).max);
+    //     cit.approve(address(hook), type(uint256).max);
 
-        function testSwapUSDCForCIT() public {
-            // TODO   
-        }
+    //     // Execute
+    //     hook.addLiquidity(key, 200e6); // 200 USDC
+    //     hook.addLiquidity(key, 300e6); // 300 USDC
+    //     hook.addLiquidity(key, 500e6); // 500 USDC
 
-        function testSwapCITForUSDC() public {
-            // TODO
-        }
+    //     // TODO
+    // }
 
+    // function testSwapUSDCForCIT() public {
+    //     // User has USDC and wants to swap for CIT
+    //     uint256 usdcAmount = 1_000e6;
+    //     usdc.mint(address(this), usdcAmount);
+    //     usdc.approve(address(swapRouter), usdcAmount);
+
+    //     // Swap USDC for CIT
+    //     IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+    //         zeroForOne: true,
+    //         amountSpecified: int256(usdcAmount), // Exact output swap
+    //         sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+    //     });
+
+    //     swapRouter.swap(
+    //         key,
+    //         params,
+    //         PoolSwapTest.TestSettings({
+    //             takeClaims: false,
+    //             settleUsingBurn: false
+    //         }),
+    //         ZERO_BYTES
+    //     );
+
+    //     // Check balances
+    //     uint256 citBalance = cit.balanceOf(address(this));
+    //     assertTrue(citBalance > 0, "Swap failed");
+    //     console.log("CIT Balance after swap:", citBalance);
+    // }
+
+    // function testSwapCITForUSDC() public {
+    //     // TODO
+    // }
 }
