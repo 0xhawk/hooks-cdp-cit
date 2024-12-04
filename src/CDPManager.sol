@@ -11,8 +11,8 @@ contract CDPManager {
 
     bool public initialized;
 
-    ERC20 public immutable usdc;
-    CryptoIndexToken public cit;
+    ERC20 public collateralToken;
+    CryptoIndexToken public syntheticToken;
     AggregatorV3Interface public immutable oracle;
     address public hookContract;
 
@@ -22,13 +22,13 @@ contract CDPManager {
 
     struct Position {
         uint256 collateral; // Amount of USDC deposited
-        uint256 debt; // Amount of CIT minted
+        uint256 debt; // Amount of syntheticToken minted
     }
 
     mapping(address => Position) public positions;
 
-    constructor(address _usdc, address _oracle, address _hookContract) {
-        usdc = ERC20(_usdc);
+    constructor(address _collateralToken, address _oracle, address _hookContract) {
+        collateralToken = ERC20(_collateralToken);
         oracle = AggregatorV3Interface(_oracle);
         hookContract = _hookContract;
     }
@@ -43,7 +43,7 @@ contract CDPManager {
         }
         require(addr != address(0), "Deploy failed");
 
-        cit = CryptoIndexToken(addr);
+        syntheticToken = CryptoIndexToken(addr);
         initialized = true;
     }
 
@@ -74,56 +74,56 @@ contract CDPManager {
             );
     }
 
-    // Function to deposit USDC and mint CIT
+    // Function to deposit USDC and mint syntheticToken
     function mintAndDeposit(
         address user,
         address poolManager,
-        uint256 usdcAmount
+        uint256 _collateralAmount
     ) external returns (uint256) {
         require(msg.sender == hookContract, "Only hook can call");
-        require(usdcAmount > 0, "Invalid amount");
+        require(_collateralAmount > 0, "Invalid amount");
 
-        // Get CIT price from oracle
-        uint256 citPrice = getLatestPrice();
+        // Get syntheticToken price from oracle
+        uint256 syntheticTokenPrice = getLatestPrice();
 
-        uint256 collateralAmount = usdcAmount / 2; // 50% to be collateral
+        uint256 collateralAmount = _collateralAmount / 2; // 50% to be collateral
 
 
-        // Calculate CIT amount to mint based on collateral ratio
-        uint256 citAmount = (collateralAmount * PERCENT_BASE * 1e18) /
-            (citPrice * COLLATERALIZATION_RATIO);
+        // Calculate syntheticToken amount to mint based on collateral ratio
+        uint256 syntheticTokenAmount = (collateralAmount * PERCENT_BASE * 1e18) /
+            (syntheticTokenPrice * COLLATERALIZATION_RATIO);
 
         // Update user's position
-        positions[user].debt += citAmount;
-        positions[user].collateral += usdcAmount;
+        positions[user].debt += syntheticTokenAmount;
+        positions[user].collateral += collateralAmount;
 
-        // Mint CIT
-        cit.mint(poolManager, citAmount);
+        // Mint syntheticToken
+        syntheticToken.mint(poolManager, syntheticTokenAmount);
 
         // Transfer
-        usdc.transferFrom(user, poolManager, usdcAmount);
-        return citAmount;
+        collateralToken.transferFrom(user, poolManager, collateralAmount);
+        return syntheticTokenAmount;
     }
 
-    // Function to redeem CIT for USDC
-    function redeem(uint256 citAmount) external {
-        require(citAmount > 0, "Invalid amount");
+    // Function to redeem syntheticToken for USDC
+    function redeem(uint256 syntheticTokenAmount) external {
+        require(syntheticTokenAmount > 0, "Invalid amount");
 
-        // Fetch the current CIT price
-        uint256 citPrice = getLatestPrice();
+        // Fetch the current syntheticToken price
+        uint256 syntheticTokenPrice = getLatestPrice();
 
         // Calculate equivalent USDC amount
-        uint256 usdcAmount = (citAmount * citPrice) / 1e18;
+        uint256 collateralAmount = (syntheticTokenAmount * syntheticTokenPrice) / 1e18;
 
         // Update user's position
-        positions[msg.sender].collateral -= usdcAmount;
-        positions[msg.sender].debt -= citAmount;
+        positions[msg.sender].collateral -= collateralAmount;
+        positions[msg.sender].debt -= syntheticTokenAmount;
 
-        // Burn CIT from user
-        cit.burnFrom(msg.sender, citAmount);
+        // Burn syntheticToken from user
+        syntheticToken.burnFrom(msg.sender, syntheticTokenAmount);
 
         // Transfer USDC back to user
-        usdc.safeTransfer(msg.sender, usdcAmount);
+        collateralToken.safeTransfer(msg.sender, collateralAmount);
     }
 
     // Function to get the latest price from the oracle
@@ -139,9 +139,9 @@ contract CDPManager {
         require(userPosition.debt > 0, "No debt");
 
         // Calculate collateralization ratio
-        uint256 citPrice = getLatestPrice();
+        uint256 syntheticTokenPrice = getLatestPrice();
         uint256 collateralValue = (userPosition.collateral * 1e18);
-        uint256 debtValue = userPosition.debt * citPrice;
+        uint256 debtValue = userPosition.debt * syntheticTokenPrice;
 
         uint256 collateralRatio = (collateralValue * PERCENT_BASE) / debtValue;
 
@@ -154,29 +154,29 @@ contract CDPManager {
         delete positions[user];
 
         // Reward liquidator with collateral
-        usdc.safeTransfer(msg.sender, seizedCollateral);
+        collateralToken.safeTransfer(msg.sender, seizedCollateral);
     }
 
-    function depositAndMintFromHook(address user, uint256 usdcAmount) external {
+    function depositAndMintFromHook(address user, uint256 collateralAmount) external {
         // require(msg.sender == address(hookContract), "Unauthorized"); // Replace hookContract with the actual hook contract address set during deployment.
 
-        require(usdcAmount > 0, "Invalid amount");
+        require(collateralAmount > 0, "Invalid amount");
 
         // USDC is already transferred to CDPManager via the pool
 
-        // Fetch the current CIT price
-        uint256 citPrice = getLatestPrice();
+        // Fetch the current syntheticToken price
+        uint256 syntheticTokenPrice = getLatestPrice();
 
-        // Calculate max CIT mintable based on collateralization ratio
-        uint256 citAmount = (usdcAmount * PERCENT_BASE * 1e18) /
-            (citPrice * COLLATERALIZATION_RATIO);
+        // Calculate max syntheticToken mintable based on collateralization ratio
+        uint256 syntheticTokenAmount = (collateralAmount * PERCENT_BASE * 1e18) /
+            (syntheticTokenPrice * COLLATERALIZATION_RATIO);
 
         // Update user's position
-        positions[user].collateral += usdcAmount;
-        positions[user].debt += citAmount;
+        positions[user].collateral += collateralAmount;
+        positions[user].debt += syntheticTokenAmount;
 
-        // Mint CIT to user
-        cit.mint(user, citAmount);
+        // Mint syntheticToken to user
+        syntheticToken.mint(user, syntheticTokenAmount);
     }
 
     function setHookContract(address _hookContract) external {

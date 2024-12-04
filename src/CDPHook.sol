@@ -11,6 +11,8 @@ import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import "./CDPManager.sol";
 import "forge-std/console.sol";
 import "forge-std/interfaces/IERC20.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {TickMath} from "v4-core/libraries/TickMath.sol";
 
 contract CDPHook is BaseHook {
     using CurrencySettler for Currency;
@@ -84,18 +86,31 @@ contract CDPHook is BaseHook {
         bytes calldata data
     ) internal override returns (bytes memory) {
         CallbackData memory callbackData = abi.decode(data, (CallbackData));
-        cdpManager.mintAndDeposit(callbackData.sender, address(poolManager), callbackData.amount0);
+        cdpManager.mintAndDeposit(
+            callbackData.sender,
+            address(poolManager),
+            callbackData.amount0
+        );
+        // Approve synthetic token for the PoolManager
+        IERC20(address(cdpManager.syntheticToken())).approve(
+            address(poolManager),
+            type(uint256).max
+        );
+        IERC20(address(cdpManager.collateralToken())).approve(
+            address(poolManager),
+            type(uint256).max
+        );
         return "";
     }
 
-    // Disable adding liquidity through the PM
+    // Disable direct liquidity addition via PoolManager
     function beforeAddLiquidity(
         address,
         PoolKey calldata,
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external pure override returns (bytes4) {
-        revert AddLiquidityThroughHook();
+        revert("Add liquidity via hook");
     }
 
     function afterSwap(
@@ -106,6 +121,7 @@ contract CDPHook is BaseHook {
         bytes calldata
     ) external pure override returns (bytes4, int128) {
         // No custom logic for swaps in this simplified version
+        // TODO: swap fees to treasury
         return (this.afterSwap.selector, 0);
     }
 }

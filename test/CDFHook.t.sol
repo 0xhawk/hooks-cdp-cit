@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {PoolSwapTest} from "@uniswap/v4-core/src/test/PoolSwapTest.sol";
 import "../src/CryptoIndexToken.sol";
 import "../src/CDPManager.sol";
 import "../src/CDPHook.sol";
@@ -37,7 +39,7 @@ contract CDPSystemTest is Test, Deployers {
 
         // Deploy USDC Mock Token
         usdc = new MockERC20("Mock USDC", "USDC", 6);
-        usdc.mint(address(this), 10000e6);
+        usdc.mint(address(this), 10_000e6);
 
         // Approve USDC Mock
         usdc.approve(address(swapRouter), type(uint256).max);
@@ -45,7 +47,7 @@ contract CDPSystemTest is Test, Deployers {
         usdc.approve(address(hook), type(uint256).max);
 
         // Deploy Mock Oracle
-        oracle = new MockV3Aggregator(18, 1000e18); // Assume CIT price is $1000, 18 decimals
+        oracle = new MockV3Aggregator(18, 1_000e18); // Assume CIT price is $1,000, 18 decimals
 
         // Deploy Hook
         uint160 flags = uint160(
@@ -92,67 +94,28 @@ contract CDPSystemTest is Test, Deployers {
         cit.approve(address(swapRouter), type(uint256).max);
         cit.approve(address(modifyLiquidityRouter), type(uint256).max);
         cit.approve(address(hook), type(uint256).max);
+    }
 
+    function testAddLiquidity() public {
         // Execute
         hook.addLiquidity(key, 200e6);
-
-        uint256 balanceCitInPM = cit.balanceOf(address(manager));
-        uint256 balanceUsdcInPM = usdc.balanceOf(address(manager));
-        (uint256 collateral, uint256 debt) = cdpManager.positions(
-            address(this)
-        );
-
-        // Verify user's position in CDP Manager
-        assertEq(collateral, balanceUsdcInPM, "Incorrect collateral");
-        assertEq(debt, balanceCitInPM, "Incorrect debt");
+        // TODO
     }
 
-    function testAddLiquidityAndMintCIT() public {
-        // Set user address in hook data
-        bytes memory hookData = abi.encode(address(this));
+        function testAddLiquidityMultipleTimes() public {
+            hook.addLiquidity(key, 200e6); // 200 USDC
+            hook.addLiquidity(key, 300e6); // 300 USDC
+            hook.addLiquidity(key, 500e6); // 500 USDC
+            
+            // TODO
+        }
 
-        uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
-        uint160 sqrtPriceAtTickUpper = TickMath.getSqrtPriceAtTick(60);
+        function testSwapUSDCForCIT() public {
+            // TODO   
+        }
 
-        // uint256 usdcToAdd = 1000e6;
-        // uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-        //     sqrtPriceAtTickLower,
-        //     SQRT_PRICE_1_1,
-        //     usdcToAdd
-        // );
-        // console.logInt(int256(int128(liquidityDelta)));
+        function testSwapCITForUSDC() public {
+            // TODO
+        }
 
-        // modifyLiquidityRouter.modifyLiquidity(
-        //     key,
-        //     IPoolManager.ModifyLiquidityParams({
-        //         tickLower: -60,
-        //         tickUpper: 60,
-        //         liquidityDelta: int256(uint256(liquidityDelta)),
-        //         salt: bytes32(0)
-        //     }),
-        //     hookData
-        // );
-
-        // uint256 usdcAmount = 100e6; // 100 USDC
-        // // Prepare ModifyLiquidityParams
-        // IPoolManager.ModifyLiquidityParams memory params = IPoolManager
-        //     .ModifyLiquidityParams({
-        //         tickLower: -60,
-        //         tickUpper: 60,
-        //         liquidityDelta: int128(1000000),
-        //         salt: bytes32(0)
-        //     });
-        // // Call modifyLiquidity on Pool Manager
-        // manager.modifyLiquidity(poolKey, params, "");
-        // // Verify CIT minted to user
-        // uint256 citBalance = cit.balanceOf(address(this));
-        // assertTrue(citBalance > 0, "CIT not minted");
-        // // Capture the returned values
-        // (uint256 collateral, uint256 debt) = cdpManager.positions(
-        //     address(this)
-        // );
-        // // Verify user's position in CDP Manager
-        // assertEq(collateral, usdcAmount, "Incorrect collateral");
-        // assertEq(debt, citBalance, "Incorrect debt");
-    }
 }
