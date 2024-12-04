@@ -39,7 +39,7 @@ contract CDPSystemTest is Test, Deployers {
 
         // Deploy USDC Mock Token
         usdc = new MockERC20("Mock USDC", "USDC", 6);
-        usdc.mint(address(this), 10_000e6);
+        usdc.mint(address(this), 1_000_000e6);
 
         // Approve USDC Mock
         usdc.approve(address(swapRouter), type(uint256).max);
@@ -53,7 +53,8 @@ contract CDPSystemTest is Test, Deployers {
         uint160 flags = uint160(
             Hooks.AFTER_INITIALIZE_FLAG |
                 Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-                Hooks.AFTER_SWAP_FLAG
+                Hooks.BEFORE_SWAP_FLAG |
+                Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CDPHook.sol", abi.encode(manager), address(flags));
         hook = CDPHook(address(flags));
@@ -94,17 +95,16 @@ contract CDPSystemTest is Test, Deployers {
         cit.approve(address(swapRouter), type(uint256).max);
         cit.approve(address(modifyLiquidityRouter), type(uint256).max);
         cit.approve(address(hook), type(uint256).max);
-    }
 
-    function testAddLiquidity() public {
         // Approve
         usdc.approve(address(hook), type(uint256).max);
         cit.approve(address(hook), type(uint256).max);
 
-        // Execute
+        // Add the initial amount of liquidity
         hook.addLiquidity(key, 200e6);
+    }
 
-    
+    function testAddLiquidity() public {
         // Get the user's position
         (uint256 collateral, uint256 debt) = cdpManager.positions(
             address(this)
@@ -142,34 +142,36 @@ contract CDPSystemTest is Test, Deployers {
     //     // TODO
     // }
 
-    // function testSwapUSDCForCIT() public {
-    //     // User has USDC and wants to swap for CIT
-    //     uint256 usdcAmount = 1_000e6;
-    //     usdc.mint(address(this), usdcAmount);
-    //     usdc.approve(address(swapRouter), usdcAmount);
+    function testSwapUSDCForCIT() public {
+        hook.addLiquidity(key, 200_000e6);
 
-    //     // Swap USDC for CIT
-    //     IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
-    //         zeroForOne: true,
-    //         amountSpecified: int256(usdcAmount), // Exact output swap
-    //         sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
-    //     });
+        // User has USDC and wants to swap for CIT
+        uint256 usdcAmount = 50_000e6;
+        usdc.mint(address(this), usdcAmount);
+        usdc.approve(address(swapRouter), usdcAmount);
 
-    //     swapRouter.swap(
-    //         key,
-    //         params,
-    //         PoolSwapTest.TestSettings({
-    //             takeClaims: false,
-    //             settleUsingBurn: false
-    //         }),
-    //         ZERO_BYTES
-    //     );
+        // Swap USDC for CIT
+        IPoolManager.SwapParams memory params = IPoolManager.SwapParams({
+            zeroForOne: true,
+            amountSpecified: int256(usdcAmount), // Exact output swap
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        });
 
-    //     // Check balances
-    //     uint256 citBalance = cit.balanceOf(address(this));
-    //     assertTrue(citBalance > 0, "Swap failed");
-    //     console.log("CIT Balance after swap:", citBalance);
-    // }
+        swapRouter.swap(
+            key,
+            params,
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
+            ZERO_BYTES
+        );
+
+        // Check balances
+        uint256 citBalance = cit.balanceOf(address(this));
+        assertTrue(citBalance > 0, "Swap failed");
+        console.log("CIT Balance after swap:", citBalance);
+    }
 
     // function testSwapCITForUSDC() public {
     //     // TODO

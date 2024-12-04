@@ -13,6 +13,7 @@ import "forge-std/console.sol";
 import "forge-std/interfaces/IERC20.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
+import {BeforeSwapDelta, toBeforeSwapDelta} from "v4-core/types/BeforeSwapDelta.sol";
 
 contract CDPHook is BaseHook {
     using CurrencySettler for Currency;
@@ -44,11 +45,11 @@ contract CDPHook is BaseHook {
                 afterAddLiquidity: false,
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
-                beforeSwap: false,
-                afterSwap: true,
+                beforeSwap: true,
+                afterSwap: false,
                 beforeDonate: false,
                 afterDonate: false,
-                beforeSwapReturnDelta: false,
+                beforeSwapReturnDelta: true,
                 afterSwapReturnDelta: false,
                 afterAddLiquidityReturnDelta: false,
                 afterRemoveLiquidityReturnDelta: false
@@ -132,41 +133,6 @@ contract CDPHook is BaseHook {
             syntheticTokenAmount,
             true
         );
-
-        // // Calculate liquidityDelta
-        // int24 tickLower = -887220;
-        // int24 tickUpper = 887220;
-
-        // uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(0);
-        // uint160 sqrtPriceLower = TickMath.getSqrtPriceAtTick(tickLower);
-        // uint160 sqrtPriceUpper = TickMath.getSqrtPriceAtTick(tickUpper);
-
-        // // Since we are adding full range liquidity, amounts can be used directly
-        // uint128 liquidityDelta = LiquidityAmounts.getLiquidityForAmounts(
-        //     sqrtPriceX96,
-        //     sqrtPriceLower,
-        //     sqrtPriceUpper,
-        //     callbackData.amount0,
-        //     syntheticTokenAmount
-        // );
-
-        // // Prepare ModifyLiquidityParams
-        // IPoolManager.ModifyLiquidityParams memory params = IPoolManager
-        //     .ModifyLiquidityParams({
-        //         tickLower: tickLower,
-        //         tickUpper: tickUpper,
-        //         liquidityDelta: int256(int128(liquidityDelta)),
-        //         salt: bytes32(0)
-        //     });
-
-        // // Call modifyLiquidity on PoolManager
-        // poolManager.modifyLiquidity(
-        //     poolKey,
-        //     params,
-        //     "" // No extra data
-        // );
-
-        // TODO: modifyLiquidity
         return "";
     }
 
@@ -180,15 +146,60 @@ contract CDPHook is BaseHook {
         revert("Add liquidity via hook");
     }
 
-    function afterSwap(
+    // Implement beforeSwap to handle swaps using the hook's liquidity
+    function beforeSwap(
         address,
-        PoolKey calldata,
-        IPoolManager.SwapParams calldata,
-        BalanceDelta,
+        PoolKey calldata key,
+        IPoolManager.SwapParams calldata params,
         bytes calldata
-    ) external pure override returns (bytes4, int128) {
-        // No custom logic for swaps in this simplified version
-        // TODO: swap fees to treasury
-        return (this.afterSwap.selector, 0);
+    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
+        uint256 amountInOutPositive = params.amountSpecified > 0
+            ? uint256(params.amountSpecified)
+            : uint256(-params.amountSpecified);
+
+        // Prepare BeforeSwapDelta as per the textbook
+        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(
+            int128(-params.amountSpecified),
+            int128(params.amountSpecified)
+        );
+
+        if (params.zeroForOne) {
+            // If user is selling Token 0 (USDC) and buying Token 1 (CIT)
+
+            // Take claim tokens of USDC (currency0) from user
+            key.currency0.take(
+                poolManager,
+                address(this),
+                amountInOutPositive,
+                true // Mint claim tokens
+            );
+
+            // Settle CIT (currency1) to user
+            key.currency1.settle(
+                poolManager,
+                address(this),
+                amountInOutPositive,
+                true // Burn claim tokens
+            );
+        } else {
+            // If user is selling Token 1 (CIT) and buying Token 0 (USDC)
+
+            // Take claim tokens of CIT (currency1) from user
+            key.currency1.take(
+                poolManager,
+                address(this),
+                amountInOutPositive,
+                true // Mint claim tokens
+            );
+
+            // Settle USDC (currency0) to user
+            key.currency0.settle(
+                poolManager,
+                address(this),
+                amountInOutPositive,
+                true // Burn claim tokens
+            );
+        }
+        return (this.beforeSwap.selector, beforeSwapDelta, 0);
     }
 }
