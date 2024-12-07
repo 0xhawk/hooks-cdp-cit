@@ -246,9 +246,9 @@ contract CDPSystemTest is Test, Deployers {
     function testSwapCITForUSDC() public {
         // Before we can swap CIT for USDC, we need CIT in our balance.
         // Acquire CIT by first swapping USDC for CIT.
-        
+
         hook.addLiquidity(key, 300_000e6);
-        
+
         // Get CIT by performing a USDC->CIT swap:
         uint256 usdcForCIT = 50e6;
         usdc.mint(address(this), usdcForCIT);
@@ -263,7 +263,10 @@ contract CDPSystemTest is Test, Deployers {
         swapRouter.swap(
             key,
             getCITParams,
-            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            PoolSwapTest.TestSettings({
+                takeClaims: false,
+                settleUsingBurn: false
+            }),
             ZERO_BYTES
         );
 
@@ -273,25 +276,25 @@ contract CDPSystemTest is Test, Deployers {
         assertTrue(citBalanceNow > 0, "Failed to acquire CIT from the pool");
 
         // Now swap CIT for USDC
-        uint256 citToSwap = 50e18; 
-        // Adjust the CITToSwap to an amount we have. 
+        uint256 citToSwap = 50e18;
+        // Adjust the CITToSwap to an amount we have.
         // CIT we got is scaled by USDC input (50e6 USDC = 50 CIT?), depends on decimal logic.
-        // If we treat 1:1 ignoring decimals in the hook, we got exactly 50e6 CIT or 50 CIT? 
+        // If we treat 1:1 ignoring decimals in the hook, we got exactly 50e6 CIT or 50 CIT?
         // We previously got CIT equal to USDC input (1:1 in raw units), usdcForCIT=50e6 units,
         // CIT has same raw number minted. So citBalanceNow ~50,000,000 CIT tokens (since we didn't scale decimals in code).
-        // Actually if hook does 1:1 ignoring decimals, we have at least 50e6 CIT units. 
+        // Actually if hook does 1:1 ignoring decimals, we have at least 50e6 CIT units.
         // Let's just swap 50 CIT from that large amount:
         // If CIT minted 1:1 with USDC (no decimals adjusted in code?), we have 50,000,000 CIT units after first swap.
         // Let's choose citToSwap = 50 to keep consistent with previous reasoning:
-        // Actually given previous test used citDiff = usdcAmount which was 50e6 and didn't scale decimals. 
-        // We'll just trust the code as is. We have a large CIT after USDC->CIT. 
+        // Actually given previous test used citDiff = usdcAmount which was 50e6 and didn't scale decimals.
+        // We'll just trust the code as is. We have a large CIT after USDC->CIT.
         // We'll do a small CIT to USDC swap: 50e18 CIT is large but we have at least that.
 
         // If unsure about the CIT quantity, pick citToSwap smaller:
         // Let's say citToSwap = 50 (no 'e18'), since we got CIT in raw units = USDC units (50e6):
         // The previous test checked citDiff == usdcAmount. That means CIT is actually being handled 1:1 with USDC units directly.
-        // So 50e6 USDC input gave us 50e6 CIT units. CIT is a normal 18 decimals token though. 
-        // Let's assume we got 50,000,000 CIT tokens exactly. Perfect. 
+        // So 50e6 USDC input gave us 50e6 CIT units. CIT is a normal 18 decimals token though.
+        // Let's assume we got 50,000,000 CIT tokens exactly. Perfect.
         // We can safely choose citToSwap = 50e6 to return 50e6 USDC. This matches previous logic.
 
         citToSwap = 50e6; // Swap exactly what we got from the previous step to maintain consistency.
@@ -303,11 +306,12 @@ contract CDPSystemTest is Test, Deployers {
         // zeroForOne = false means CIT->USDC
         // Exact input CIT
         int256 amountSpecified = -int256(citToSwap);
-        IPoolManager.SwapParams memory citForUSDCParams = IPoolManager.SwapParams({
-            zeroForOne: false,
-            amountSpecified: amountSpecified,
-            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
-        });
+        IPoolManager.SwapParams memory citForUSDCParams = IPoolManager
+            .SwapParams({
+                zeroForOne: false,
+                amountSpecified: amountSpecified,
+                sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+            });
 
         swapRouter.swap(
             key,
@@ -332,7 +336,7 @@ contract CDPSystemTest is Test, Deployers {
         assertEq(citSpent, citToSwap, "CIT spent not correct");
         assertEq(usdcGained, 50e6, "USDC gained not correct");
     }
-    
+
     function testPriceChangeEffectOnLiquidity() public {
         // Change oracle price to $2,000:
         oracle.updateAnswer(int256(2000e18));
@@ -368,4 +372,5 @@ contract CDPSystemTest is Test, Deployers {
         // Just ensure it's consistent: at 2x price, CIT minted from same collateral is half.
         // This is a conceptual check, if needed more exact checks can be done with known history.
     }
+
 }

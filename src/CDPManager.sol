@@ -105,23 +105,41 @@ contract CDPManager {
         return syntheticTokenAmount;
     }
 
-    function redeem(uint256 syntheticTokenAmount) external {
-        require(syntheticTokenAmount > 0, "Invalid amount");
-        Position storage pos = positions[msg.sender];
-        require(pos.debt >= syntheticTokenAmount, "Not enough debt");
+    function onRedeem(
+        address user,
+        uint256 citAmount
+    ) external returns (uint256 usdcAmount) {
+        require(msg.sender == hookContract, "Only hook");
+        Position storage pos = positions[user];
+        require(pos.debt >= citAmount, "Not enough debt");
 
-        uint256 syntheticTokenPrice = getLatestPrice();
-        uint256 usdcToReturn = (syntheticTokenAmount * syntheticTokenPrice) /
-            1e18;
+        uint256 price = getLatestPrice();
+        usdcAmount = (citAmount * price) / 1e18;
+        require(pos.collateral >= usdcAmount, "Not enough collateral");
 
-        require(pos.collateral >= usdcToReturn, "Not enough collateral");
+        pos.debt -= citAmount;
+        pos.collateral -= usdcAmount;
 
-        pos.debt -= syntheticTokenAmount;
-        pos.collateral -= usdcToReturn;
-
-        syntheticToken.burnFrom(msg.sender, syntheticTokenAmount);
-        collateralToken.safeTransfer(msg.sender, usdcToReturn);
+        return usdcAmount;
     }
+
+    // function redeem(uint256 syntheticTokenAmount) external {
+    //     require(syntheticTokenAmount > 0, "Invalid amount");
+    //     Position storage pos = positions[msg.sender];
+    //     require(pos.debt >= syntheticTokenAmount, "Not enough debt");
+
+    //     uint256 syntheticTokenPrice = getLatestPrice();
+    //     uint256 usdcToReturn = (syntheticTokenAmount * syntheticTokenPrice) /
+    //         1e18;
+
+    //     require(pos.collateral >= usdcToReturn, "Not enough collateral");
+
+    //     pos.debt -= syntheticTokenAmount;
+    //     pos.collateral -= usdcToReturn;
+
+    //     syntheticToken.burnFrom(msg.sender, syntheticTokenAmount);
+    //     collateralToken.safeTransfer(msg.sender, usdcToReturn);
+    // }
 
     // Function to get the latest price from the oracle
     function getLatestPrice() public view returns (uint256) {
@@ -146,6 +164,24 @@ contract CDPManager {
         delete positions[user];
 
         collateralToken.safeTransfer(msg.sender, seizedCollateral);
+    }
+
+    function onLiquidate(
+        address victim
+    ) external returns (uint256 seizedCollateral) {
+        require(msg.sender == hookContract, "Only hook");
+        Position memory userPos = positions[victim];
+        require(userPos.debt > 0, "No debt");
+
+        uint256 price = getLatestPrice();
+        uint256 collateralValue = userPos.collateral * 1e18;
+        uint256 debtValue = userPos.debt * price;
+        uint256 ratio = (collateralValue * PERCENT_BASE) / debtValue;
+        require(ratio < LIQUIDATION_THRESHOLD, "Position is healthy");
+
+        seizedCollateral = userPos.collateral;
+        delete positions[victim];
+        return seizedCollateral;
     }
 
     function setHookContract(address _hookContract) external {

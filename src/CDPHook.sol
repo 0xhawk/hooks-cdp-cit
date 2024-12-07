@@ -68,7 +68,7 @@ contract CDPHook is BaseHook {
         cdpManager.initialize(salt);
         return this.afterInitialize.selector;
     }
-    
+
     struct CallbackData {
         uint256 amount0;
         Currency currency0;
@@ -133,6 +133,26 @@ contract CDPHook is BaseHook {
             true
         );
         return "";
+    }
+
+    function redeem(uint256 citAmount) external {
+        // TODO:
+        require(citAmount > 0, "Invalid citAmount");
+
+        uint256 usdcAmount = cdpManager.onRedeem(msg.sender, citAmount);
+
+        cdpManager.syntheticToken().burnFrom(msg.sender, citAmount);
+
+        Currency c0 = Currency.wrap(address(cdpManager.collateralToken()));
+        c0.take(poolManager, msg.sender, usdcAmount, false);
+    }
+
+    function liquidate(address victim) external {
+        // TODO:
+        uint256 seizedCollateral = cdpManager.onLiquidate(victim);
+
+        Currency c0 = Currency.wrap(address(cdpManager.collateralToken()));
+        c0.take(poolManager, msg.sender, seizedCollateral, false);
     }
 
     // Disable direct liquidity addition via PoolManager
