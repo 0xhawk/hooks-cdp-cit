@@ -60,16 +60,15 @@ contract CDPHook is BaseHook {
         address,
         PoolKey calldata key,
         uint160,
-        int24 tick
+        int24
     ) external override onlyPoolManager returns (bytes4) {
         console.log("AFTER INITIALIZE");
-        poolKey = key; // Store the poolKey for later use
-        // TODO: salt from args
+        poolKey = key;
         bytes32 salt = keccak256(abi.encodePacked("unique_identifier"));
         cdpManager.initialize(salt);
         return this.afterInitialize.selector;
     }
-
+    
     struct CallbackData {
         uint256 amount0;
         Currency currency0;
@@ -97,7 +96,7 @@ contract CDPHook is BaseHook {
         CallbackData memory callbackData = abi.decode(data, (CallbackData));
 
         // Mint synthetic tokens to the Hook contract and update user's position
-        uint256 syntheticTokenAmount = cdpManager.mintAndDeposit(
+        uint256 syntheticTokenAmount = cdpManager.mintForCollateral(
             address(this),
             callbackData.sender,
             callbackData.amount0
@@ -143,7 +142,7 @@ contract CDPHook is BaseHook {
         IPoolManager.ModifyLiquidityParams calldata,
         bytes calldata
     ) external pure override returns (bytes4) {
-        revert("Add liquidity via hook");
+        revert AddLiquidityThroughHook();
     }
 
     // Implement beforeSwap to handle swaps using the hook's liquidity
