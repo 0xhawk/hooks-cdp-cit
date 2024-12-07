@@ -53,20 +53,14 @@ contract CDPSystemTest is Test, Deployers {
         // Deploy the Hook contract that integrates with Uniswap Hooks.
         // Flags enable afterInitialize, beforeAddLiquidity, beforeSwap, beforeSwapReturnDelta.
         uint160 flags = uint160(
-            Hooks.AFTER_INITIALIZE_FLAG |
-            Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
-            Hooks.BEFORE_SWAP_FLAG |
-            Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+            Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CDPHook.sol", abi.encode(manager), address(flags));
         hook = CDPHook(address(flags));
 
         // Deploy the CDP Manager which uses the Hook and Oracle to mint CIT on liquidity add.
-        cdpManager = new CDPManager(
-            address(usdc),
-            address(oracle),
-            address(hook)
-        );
+        cdpManager = new CDPManager(address(usdc), address(oracle), address(hook));
         usdc.approve(address(cdpManager), type(uint256).max);
 
         // Link the Hook to the CDP Manager.
@@ -76,10 +70,7 @@ contract CDPSystemTest is Test, Deployers {
         bytes32 salt = keccak256(abi.encodePacked("unique_identifier"));
         bytes memory bytecode = type(CryptoIndexToken).creationCode;
         bytes32 bytecodeHash = cdpManager.getBytecodeHash(bytecode);
-        address predictedCitAddress = cdpManager.computeAddress(
-            salt,
-            bytecodeHash
-        );
+        address predictedCitAddress = cdpManager.computeAddress(salt, bytecodeHash);
         cit = CryptoIndexToken(predictedCitAddress);
 
         // Wrap currencies and initialize a Uniswap V4 pool with the Hook integrated.
@@ -87,13 +78,7 @@ contract CDPSystemTest is Test, Deployers {
         citCurrency = Currency.wrap(address(cit));
 
         // Initialize a Uniswap pool with our Hook and a fee tier of 3000.
-        (key, ) = initPool(
-            usdcCurrency,
-            citCurrency,
-            hook,
-            3000,
-            SQRT_PRICE_1_1
-        );
+        (key,) = initPool(usdcCurrency, citCurrency, hook, 3000, SQRT_PRICE_1_1);
         cit.approve(address(swapRouter), type(uint256).max);
         cit.approve(address(modifyLiquidityRouter), type(uint256).max);
 
@@ -158,7 +143,7 @@ contract CDPSystemTest is Test, Deployers {
             amountSpecified: int256(usdcAmount),
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
-        swapRouter.swap(key, params, PoolSwapTest.TestSettings({takeClaims:false, settleUsingBurn:false}), ZERO_BYTES);
+        swapRouter.swap(key, params, PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}), ZERO_BYTES);
 
         uint256 usdcAfter = usdc.balanceOf(address(this));
         uint256 citAfter = cit.balanceOf(address(this));
@@ -182,13 +167,15 @@ contract CDPSystemTest is Test, Deployers {
             amountSpecified: int256(usdcForCIT),
             sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
         });
-        swapRouter.swap(key, getCITParams, PoolSwapTest.TestSettings({takeClaims:false, settleUsingBurn:false}), ZERO_BYTES);
+        swapRouter.swap(
+            key, getCITParams, PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}), ZERO_BYTES
+        );
 
         uint256 citBalanceNow = cit.balanceOf(address(this));
         assertTrue(citBalanceNow > 0, "Failed to acquire CIT from the pool");
 
         // Now swap CIT back for USDC using exact input CIT.
-        uint256 citToSwap = 50e6; 
+        uint256 citToSwap = 50e6;
         cit.approve(address(swapRouter), citToSwap);
         uint256 usdcBefore = usdc.balanceOf(address(this));
         uint256 citBefore = cit.balanceOf(address(this));
@@ -198,7 +185,9 @@ contract CDPSystemTest is Test, Deployers {
             amountSpecified: -int256(citToSwap),
             sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
         });
-        swapRouter.swap(key, citForUSDCParams, PoolSwapTest.TestSettings({takeClaims:false, settleUsingBurn:false}), ZERO_BYTES);
+        swapRouter.swap(
+            key, citForUSDCParams, PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}), ZERO_BYTES
+        );
 
         uint256 usdcAfter = usdc.balanceOf(address(this));
         uint256 citAfter = cit.balanceOf(address(this));
@@ -217,14 +206,13 @@ contract CDPSystemTest is Test, Deployers {
 
         (uint256 collateral, uint256 debt) = cdpManager.positions(address(this));
 
-        // At higher price, for the same collateral, fewer CIT are minted, 
+        // At higher price, for the same collateral, fewer CIT are minted,
         // just ensure the debt increased and logic holds.
         assertTrue(debt > 66666, "Debt not increased after second add at higher price");
     }
 
     // Additional tests would go here for redeem and liquidate once the logic is integrated with the Hook:
-    // However, user requested to handle that in a previous iteration. The final code would have corresponding 
+    // However, user requested to handle that in a previous iteration. The final code would have corresponding
     // redeem and liquidate tests integrated with the hook calls and proper commentary.
     // For now, this code snippet focuses on the requested test commentary improvements.
-
 }

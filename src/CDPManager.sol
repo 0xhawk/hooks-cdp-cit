@@ -32,11 +32,7 @@ contract CDPManager {
         _;
     }
 
-    constructor(
-        address _collateralToken,
-        address _oracle,
-        address _hookContract
-    ) {
+    constructor(address _collateralToken, address _oracle, address _hookContract) {
         collateralToken = ERC20(_collateralToken);
         oracle = AggregatorV3Interface(_oracle);
         hookContract = _hookContract;
@@ -56,47 +52,27 @@ contract CDPManager {
         initialized = true;
     }
 
-    function getBytecodeHash(
-        bytes memory bytecode
-    ) public pure returns (bytes32) {
+    function getBytecodeHash(bytes memory bytecode) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(bytecode));
     }
 
-    function computeAddress(
-        bytes32 salt,
-        bytes32 bytecodeHash
-    ) public view returns (address) {
-        return
-            address(
-                uint160(
-                    uint256(
-                        keccak256(
-                            abi.encodePacked(
-                                bytes1(0xff),
-                                address(this),
-                                salt,
-                                bytecodeHash
-                            )
-                        )
-                    )
-                )
-            );
+    function computeAddress(bytes32 salt, bytes32 bytecodeHash) public view returns (address) {
+        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, bytecodeHash)))));
     }
 
-    function mintForCollateral(
-        address recipient,
-        address user,
-        uint256 _collateralAmount
-    ) external onlyHookContract returns (uint256) {
+    function mintForCollateral(address recipient, address user, uint256 _collateralAmount)
+        external
+        onlyHookContract
+        returns (uint256)
+    {
         require(_collateralAmount > 0, "Invalid collateral amount");
 
         uint256 syntheticTokenPrice = getLatestPrice();
         require(syntheticTokenPrice > 0, "Invalid oracle price");
 
         uint256 collateralAmount = _collateralAmount / 2;
-        uint256 syntheticTokenAmount = (collateralAmount *
-            PERCENT_BASE *
-            1e18) / (syntheticTokenPrice * COLLATERALIZATION_RATIO);
+        uint256 syntheticTokenAmount =
+            (collateralAmount * PERCENT_BASE * 1e18) / (syntheticTokenPrice * COLLATERALIZATION_RATIO);
 
         positions[user].debt += syntheticTokenAmount;
         positions[user].collateral += collateralAmount;
@@ -105,10 +81,7 @@ contract CDPManager {
         return syntheticTokenAmount;
     }
 
-    function onRedeem(
-        address user,
-        uint256 citAmount
-    ) external returns (uint256 usdcAmount) {
+    function onRedeem(address user, uint256 citAmount) external returns (uint256 usdcAmount) {
         require(msg.sender == hookContract, "Only hook");
         Position storage pos = positions[user];
         require(pos.debt >= citAmount, "Not enough debt");
@@ -143,7 +116,7 @@ contract CDPManager {
 
     // Function to get the latest price from the oracle
     function getLatestPrice() public view returns (uint256) {
-        (, int256 price, , , ) = oracle.latestRoundData();
+        (, int256 price,,,) = oracle.latestRoundData();
         require(price > 0, "Invalid price");
         return uint256(price);
     }
@@ -166,9 +139,7 @@ contract CDPManager {
         collateralToken.safeTransfer(msg.sender, seizedCollateral);
     }
 
-    function onLiquidate(
-        address victim
-    ) external returns (uint256 seizedCollateral) {
+    function onLiquidate(address victim) external returns (uint256 seizedCollateral) {
         require(msg.sender == hookContract, "Only hook");
         Position memory userPos = positions[victim];
         require(userPos.debt > 0, "No debt");

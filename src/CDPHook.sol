@@ -31,37 +31,31 @@ contract CDPHook is BaseHook {
         cdpManager = CDPManager(_cdpManager);
     }
 
-    function getHookPermissions()
-        public
-        pure
-        override
-        returns (Hooks.Permissions memory)
-    {
-        return
-            Hooks.Permissions({
-                beforeInitialize: false,
-                afterInitialize: true,
-                beforeAddLiquidity: true,
-                afterAddLiquidity: false,
-                beforeRemoveLiquidity: false,
-                afterRemoveLiquidity: false,
-                beforeSwap: true,
-                afterSwap: false,
-                beforeDonate: false,
-                afterDonate: false,
-                beforeSwapReturnDelta: true,
-                afterSwapReturnDelta: false,
-                afterAddLiquidityReturnDelta: false,
-                afterRemoveLiquidityReturnDelta: false
-            });
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
+            beforeInitialize: false,
+            afterInitialize: true,
+            beforeAddLiquidity: true,
+            afterAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterRemoveLiquidity: false,
+            beforeSwap: true,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false,
+            beforeSwapReturnDelta: true,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
+        });
     }
 
-    function afterInitialize(
-        address,
-        PoolKey calldata key,
-        uint160,
-        int24
-    ) external override onlyPoolManager returns (bytes4) {
+    function afterInitialize(address, PoolKey calldata key, uint160, int24)
+        external
+        override
+        onlyPoolManager
+        returns (bytes4)
+    {
         console.log("AFTER INITIALIZE");
         poolKey = key;
         bytes32 salt = keccak256(abi.encodePacked("unique_identifier"));
@@ -78,29 +72,16 @@ contract CDPHook is BaseHook {
 
     function addLiquidity(PoolKey calldata key, uint256 amount0) external {
         // Transfer USDC from user to Hook
-        IERC20(address(cdpManager.collateralToken())).transferFrom(
-            msg.sender,
-            address(this),
-            amount0
-        );
-        poolManager.unlock(
-            abi.encode(
-                CallbackData(amount0, key.currency0, key.currency1, msg.sender)
-            )
-        );
+        IERC20(address(cdpManager.collateralToken())).transferFrom(msg.sender, address(this), amount0);
+        poolManager.unlock(abi.encode(CallbackData(amount0, key.currency0, key.currency1, msg.sender)));
     }
 
-    function _unlockCallback(
-        bytes calldata data
-    ) internal override returns (bytes memory) {
+    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
         CallbackData memory callbackData = abi.decode(data, (CallbackData));
 
         // Mint synthetic tokens to the Hook contract and update user's position
-        uint256 syntheticTokenAmount = cdpManager.mintForCollateral(
-            address(this),
-            callbackData.sender,
-            callbackData.amount0
-        );
+        uint256 syntheticTokenAmount =
+            cdpManager.mintForCollateral(address(this), callbackData.sender, callbackData.amount0);
 
         // Now the Hook has both USDC and synthetic tokens
 
@@ -113,12 +94,7 @@ contract CDPHook is BaseHook {
         );
 
         // Settle CIT from Hook to PoolManager
-        callbackData.currency1.settle(
-            poolManager,
-            address(this),
-            syntheticTokenAmount,
-            false
-        );
+        callbackData.currency1.settle(poolManager, address(this), syntheticTokenAmount, false);
 
         callbackData.currency0.take(
             poolManager,
@@ -126,12 +102,7 @@ contract CDPHook is BaseHook {
             callbackData.amount0,
             true // true = mint claim tokens for the hook, equivalent to money we just deposited to the PM
         );
-        callbackData.currency1.take(
-            poolManager,
-            address(this),
-            syntheticTokenAmount,
-            true
-        );
+        callbackData.currency1.take(poolManager, address(this), syntheticTokenAmount, true);
         return "";
     }
 
@@ -156,31 +127,27 @@ contract CDPHook is BaseHook {
     }
 
     // Disable direct liquidity addition via PoolManager
-    function beforeAddLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external pure override returns (bytes4) {
+    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
         revert AddLiquidityThroughHook();
     }
 
     // Implement beforeSwap to handle swaps using the hook's liquidity
-    function beforeSwap(
-        address,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        bytes calldata
-    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
-        uint256 amountInOutPositive = params.amountSpecified > 0
-            ? uint256(params.amountSpecified)
-            : uint256(-params.amountSpecified);
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata params, bytes calldata)
+        external
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        uint256 amountInOutPositive =
+            params.amountSpecified > 0 ? uint256(params.amountSpecified) : uint256(-params.amountSpecified);
 
         // Prepare BeforeSwapDelta as per the textbook
-        BeforeSwapDelta beforeSwapDelta = toBeforeSwapDelta(
-            int128(-params.amountSpecified),
-            int128(params.amountSpecified)
-        );
+        BeforeSwapDelta beforeSwapDelta =
+            toBeforeSwapDelta(int128(-params.amountSpecified), int128(params.amountSpecified));
 
         if (params.zeroForOne) {
             // If user is selling Token 0 (USDC) and buying Token 1 (CIT)
